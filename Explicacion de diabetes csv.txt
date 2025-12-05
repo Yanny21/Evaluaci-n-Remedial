@@ -1,0 +1,241 @@
+"""
+algoritmo 2 - ANÁLISIS SUPERVISADO: CLASIFICACIÓN
+Predicción de Diabetes usando el dataset diabetes.csv
+"""
+
+Estudiante: Yanny Galilea Moreno Santiago
+Grupo: IDGS12
+Materia: Extracción de Conocimiento en Bases de Datos
+Profesor: Filiberto Ruiz Hernández
+Fecha: Diciembre 2025
+Algoritmo seleccionado: Random Forest Classifier
+"""
+
+# ==========================================
+# JUSTIFICACIÓN DEL ALGORITMO ELEGIDO
+# ==========================================
+"""
+Elegí Random Forest Classifier por las siguientes razones:
+
+1. Es un problema de clasificación binaria (0 = No diabetes, 1 = Diabetes).
+2. Las variables tienen relaciones no lineales con la variable objetivo (por ejemplo: glucosa alta aumenta mucho la probabilidad).
+3. El dataset tiene valores faltantes disfrazados como ceros (Glucose=0, BMI=0, etc.) y Random Forest es muy robusto ante este tipo de ruido.
+4. Puede manejar automáticamente la importancia de variables y detectar interacciones complejas.
+5. Suele superar a otros modelos como Regresión Logística o un solo Árbol de Decisión en este famoso dataset de diabetes (Pima Indians).
+6. Permite optimizar fácilmente con GridSearchCV y es menos sensible al sobreajuste que un árbol profundo.
+
+Por eso descarté KNN (sensible a escala), SVM (lento con muchos datos) y un solo árbol (menos preciso), y elegí Random Forest como la mejor opción.
+"""
+
+# ==========================================
+# DESCRIPCIÓN DEL DISEÑO DEL MODELO (PASO A PASO)
+# ==========================================
+"""
+El modelo se construyó siguiendo estos pasos:
+
+1. Cargar el dataset diabetes.csv
+2. Explorar datos: estructura, valores nulos, distribución de clases y estadísticas
+3. Limpieza: reemplazar valores cero biológicamente imposibles por la mediana
+4. Análisis exploratorio: gráficos de distribución, correlaciones y boxplots por clase
+5. Separar variables predictoras (X) y objetivo (y = Outcome)
+6. Dividir en entrenamiento (80%) y prueba (20%) con estratificación para mantener proporción de clases
+7. Entrenar modelo base de Random Forest
+8. Optimizar hiperparámetros con GridSearchCV usando F1-Score como métrica principal
+9. Evaluar modelo optimizado con Accuracy, Precision, Recall, F1 y AUC-ROC
+10. Mostrar importancia de variables y graficar un árbol individual
+11. Generar matrices de confusión y curva ROC
+
+A continuación todo el proceso detallado:
+"""
+
+# ==========================================
+# IMPLEMENTACIÓN DEL MODELO
+# ==========================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import plot_tree
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
+                             confusion_matrix, classification_report, roc_curve, roc_auc_score)
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# Configuración visual
+plt.style.use('seaborn-v0_8-darkgrid')
+%matplotlib inline
+
+# 1. Cargar datos
+print("1. Cargando el dataset diabetes.csv...")
+df = pd.read_csv(r"C:\Users\yanny\Downloads\diabetes.csv")
+print(f"   Filas: {df.shape[0]} | Columnas: {df.shape[1]}")
+display(df.head())
+
+# 2. Exploración inicial
+print("\n2. Exploración de los datos")
+print("\nDistribución de la variable objetivo (Outcome):")
+print(df['Outcome'].value_counts())
+print("\nPorcentaje:")
+print(df['Outcome'].value_counts(normalize=True) * 100)
+
+# 3. Limpieza: reemplazar ceros imposibles por la mediana
+print("\n3. Limpiando valores cero que no tienen sentido biológico...")
+columnas_ceros = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
+df_limpio = df.copy()
+
+for col in columnas_ceros:
+    mediana = df_limpio[df_limpio[col] != 0][col].median()
+    df_limpio[col] = df_limpio[col].replace(0, mediana)
+
+print("   Valores cero reemplazados por la mediana de cada columna")
+
+# 4. Análisis exploratorio
+print("\n4. Análisis exploratorio")
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+df_limpio['Outcome'].value_counts().plot(kind='bar', color=['lightblue', 'salmon'])
+plt.title('Distribución de Clases')
+plt.xlabel('0 = No Diabetes | 1 = Diabetes')
+plt.ylabel('Cantidad')
+
+plt.subplot(1,2,2)
+df_limpio['Outcome'].value_counts().plot(kind='pie', autopct='%1.1f%%', colors=['lightblue', 'salmon'])
+plt.title('Proporción de Clases')
+plt.ylabel('')
+plt.show()
+
+# Correlación
+plt.figure(figsize=(10,8))
+sns.heatmap(df_limpio.corr(), annot=True, cmap='coolwarm', center=0, fmt='.2f')
+plt.title('Matriz de Correlación', fontweight='bold')
+plt.show()
+
+# 5. Preparar datos para el modelo
+print("\n5. Preparando variables")
+X = df_limpio.drop('Outcome', axis=1)
+y = df_limpio['Outcome']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+print(f"   Entrenamiento: {X_train.shape[0]} ejemplos")
+print(f"   Prueba: {X_test.shape[0]} ejemplos")
+
+# 6. Modelo base
+print("\n6. Entrenando modelo base (Random Forest sin optimizar)")
+modelo_base = RandomForestClassifier(random_state=42, n_jobs=-1)
+modelo_base.fit(X_train, y_train)
+pred_base = modelo_base.predict(X_test)
+prob_base = modelo_base.predict_proba(X_test)[:, 1]
+
+print(f"   Accuracy base: {accuracy_score(y_test, pred_base):.4f}")
+
+# 7. Optimización de hiperparámetros
+print("\n7. Optimizando con GridSearchCV...")
+parametros = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [10, 20, 30, None],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['sqrt', 'log2'],
+    'class_weight': ['balanced', None]
+}
+
+grid = GridSearchCV(RandomForestClassifier(random_state=42, n_jobs=-1),
+                    parametros, cv=5, scoring='f1', n_jobs=-1)
+grid.fit(X_train, y_train)
+
+print("   Búsqueda terminada")
+print(f"   Mejores parámetros: {grid.best_params_}")
+
+# 8. Modelo final
+print("\n8. Evaluando modelo optimizado")
+modelo_final = grid.best_estimator_
+pred_final = modelo_final.predict(X_test)
+prob_final = modelo_final.predict_proba(X_test)[:, 1]
+
+acc = accuracy_score(y_test, pred_final)
+prec = precision_score(y_test, pred_final)
+rec = recall_score(y_test, pred_final)
+f1 = f1_score(y_test, pred_final)
+auc = roc_auc_score(y_test, prob_final)
+
+print(f"   Accuracy final : {acc:.4f} ({acc*100:.1f}%)")
+print(f"   Precision      : {prec:.4f}")
+print(f"   Recall         : {rec:.4f}")
+print(f"   F1-Score       : {f1:.4f}")
+print(f"   AUC-ROC        : {auc:.4f}")
+
+# 9. Matriz de confusión
+print("\n9. Matriz de confusión (modelo final)")
+cm = confusion_matrix(y_test, pred_final)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=['No Diabetes', 'Diabetes'],
+            yticklabels=['No Diabetes', 'Diabetes'])
+plt.title('Matriz de Confusión - Modelo Optimizado', fontweight='bold')
+plt.xlabel('Predicción')
+plt.ylabel('Real')
+plt.show()
+
+# 10. Importancia de variables
+print("\n10. Variables más importantes")
+importancia = pd.DataFrame({
+    'Variable': X.columns,
+    'Importancia': modelo_final.feature_importances_
+}).sort_values('Importancia', ascending=False)
+
+display(importancia.head(8))
+
+plt.figure(figsize=(10,6))
+plt.barh(importancia['Variable'], importancia['Importancia'], color='purple')
+plt.title('Importancia de Variables', fontweight='bold')
+plt.gca().invert_yaxis()
+plt.show()
+
+# 11. Árbol individual (como pide el profesor)
+print("\n11. Visualización de un árbol del Random Forest")
+arbol = modelo_final.estimators_[0]
+plt.figure(figsize=(20,12))
+plot_tree(arbol, feature_names=X.columns, class_names=['No Diabetes', 'Diabetes'],
+          filled=True, max_depth=4, fontsize=10, rounded=True)
+plt.title('Árbol de Decisión Individual del Bosque (profundidad limitada a 4)', 
+          fontsize=16, fontweight='bold')
+plt.show()
+
+# 12. Curva ROC
+print("\n12. Curva ROC")
+fpr, tpr, _ = roc_curve(y_test, prob_final)
+plt.figure(figsize=(9,7))
+plt.plot(fpr, tpr, color='green', lw=3, label=f'AUC = {auc:.3f}')
+plt.plot([0,1], [0,1], 'r--')
+plt.title('Curva ROC - Modelo Final', fontweight='bold')
+plt.xlabel('Tasa de Falsos Positivos')
+plt.ylabel('Tasa de Verdaderos Positivos')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# ==========================================
+# CONCLUSIÓN FINAL
+# ==========================================
+print("\n" + "="*70)
+print("CONCLUSIÓN FINAL")
+print("="*70)
+print("Se desarrolló con éxito un clasificador de diabetes usando Random Forest.")
+print("")
+print(f"Resultados del modelo optimizado:")
+print(f"• Exactitud (Accuracy): {acc:.4f} → {acc*100:.1f}% de predicciones correctas")
+print(f"• Recall: {rec:.4f} → Detecta el {rec*100:.1f}% de los casos reales de diabetes")
+print(f"• F1-Score: {f1:.4f} → Buen balance entre precisión y sensibilidad")
+print(f"• AUC-ROC: {auc:.4f} → Excelente capacidad de discriminación")
+print("")
+print("Las variables más importantes para predecir diabetes fueron:")
+for i in range(3):
+    var = importancia.iloc[i]
+    print(f"   {i+1}. {var['Variable']}: {var['Importancia']:.4f}")
+print("")
+print("El modelo puede ayudar a identificar pacientes en riesgo de manera temprana.")
+print("")
