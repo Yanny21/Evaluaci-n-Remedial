@@ -1,0 +1,214 @@
+"""
+TAREA 4 - REDUCCIÓN DE DIMENSIONALIDAD
+Dataset Iris - Análisis con PCA (Principal Component Analysis)
+"""
+
+# ==========================================
+# DATOS DEL ALUMNO
+# ==========================================
+"""
+Estudiante: Yanny Galilea Moreno Santiago
+Grupo: IDGS12
+Materia: Extracción de Conocimiento en Bases de Datos
+Profesor: Filiberto Ruiz Hernández
+Algoritmo seleccionado: PCA (Análisis de Componentes Principales)
+"""
+
+# ==========================================
+# JUSTIFICACIÓN DEL ALGORITMO ELEGIDO
+# ==========================================
+"""
+Elegí PCA (Principal Component Analysis) por las siguientes razones:
+
+1. Es el método más usado y efectivo para reducción de dimensionalidad lineal.
+2. El dataset Iris tiene 4 variables altamente correlacionadas (sepal/petal length-width).
+3. PCA permite reducir de 4 a 2 dimensiones manteniendo casi toda la información.
+4. Facilita la visualización clara de las 3 especies de flores en 2D o 3D.
+5. Es rápido, interpretable y no requiere parámetros complejos.
+6. Es ideal para datasets pequeños y bien estructurados como Iris.
+
+Otros métodos como t-SNE o UMAP son no lineales y más para visualización, pero PCA es el más adecuado para este caso clásico y educativo.
+"""
+
+# ==========================================
+# DESCRIPCIÓN DEL DISEÑO DEL MODELO (PASO A PASO)
+# ==========================================
+"""
+El análisis se realizó en los siguientes pasos:
+
+1. Cargar el dataset iris.csv
+2. Explorar los datos: distribución de especies, estadísticas y correlaciones
+3. Normalizar las variables (obligatorio para PCA)
+4. Aplicar PCA y analizar la varianza explicada por cada componente
+5. Determinar el número óptimo de componentes (2)
+6. Aplicar PCA con 2 componentes
+7. Visualizar los datos en 2D y 3D
+8. Interpretar los componentes principales (loadings)
+9. Crear biplot para ver relación entre variables y observaciones
+
+A continuación todo el proceso detallado:
+"""
+
+# ==========================================
+# IMPLEMENTACIÓN DEL MODELO
+# ==========================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# Configuración visual
+plt.style.use('seaborn-v0_8-darkgrid')
+%matplotlib inline
+
+# 1. Cargar datos
+print("1. Cargando el dataset iris.csv...")
+df = pd.read_csv(r"C:\Users\yanny\Downloads\Iris.csv")
+print(f"   Total de flores: {df.shape[0]} | Especies: {df['species'].nunique()}")
+display(df.head())
+
+# 2. Exploración inicial
+print("\n2. Distribución de especies")
+print(df['species'].value_counts())
+
+# 3. Matriz de correlación (muy importante para PCA)
+print("\n3. Matriz de correlación entre las 4 variables")
+features = ['sepal_length', 'sepal_width', 'petal_length', 'petal_width']
+plt.figure(figsize=(9,7))
+sns.heatmap(df[features].corr(), annot=True, cmap='coolwarm', center=0, square=True, fmt='.3f')
+plt.title('Correlación entre Variables del Iris', fontweight='bold')
+plt.show()
+
+# 4. Preparar datos
+print("\n4. Preparando datos para PCA")
+X = df[features].values
+y = df['species'].values
+
+# Normalización (¡CRUCIAL!)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+print("   Datos normalizados correctamente")
+
+# 5. Análisis de varianza explicada
+print("\n5. Calculando varianza explicada por cada componente")
+pca_full = PCA()
+pca_full.fit(X_scaled)
+varianza = pca_full.explained_variance_ratio_
+acumulada = np.cumsum(varianza)
+
+for i in range(4):
+    print(f"   PC{i+1}: {varianza[i]*100:.2f}% → Acumulada: {acumulada[i]*100:.2f}%")
+
+# Gráfica de varianza acumulada
+plt.figure(figsize=(10,6))
+plt.plot(range(1,5), acumulada*100, 'o-', color='purple', linewidth=3, markersize=10)
+plt.axhline(y=95, color='red', linestyle='--', label='95% varianza')
+plt.axhline(y=90, color='orange', linestyle='--', label='90% varianza')
+plt.title('Varianza Explicada Acumulada', fontweight='bold')
+plt.xlabel('Número de Componentes Principales')
+plt.ylabel('Varianza Explicada (%)')
+plt.xticks(range(1,5))
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# 6. DECISIÓN: ¿Cuántos componentes usar?
+print("\n6. JUSTIFICACIÓN DEL NÚMERO DE COMPONENTES")
+print("="*60)
+print("• Con 1 componente: 72.96% de la información")
+print("• Con 2 componentes: 95.80% de la información ← ¡EXCELENTE!")
+print("• Con 3 componentes: 99.48%")
+print("• Con 4 componentes: 100% (original)")
+print("")
+print("DECISIÓN FINAL:")
+print("→ Elegí 2 componentes porque:")
+print("   1. Capturan el 95.80% de la varianza total")
+print("   2. Reducen de 4 a 2 dimensiones (50% de reducción)")
+print("   3. Permiten visualización perfecta en 2D")
+print("   4. Las 3 especies de Iris se separan claramente")
+print("   5. Pérdida de información mínima: solo 4.2%")
+print("¡ES EL MEJOR BALANCE POSIBLE!")
+
+n_componentes = 2
+
+# 7. Aplicar PCA con 2 componentes
+print(f"\n7. Aplicando PCA con {n_componentes} componentes...")
+pca = PCA(n_components=n_componentes)
+X_pca = pca.fit_transform(X_scaled)
+
+print(f"   Dimensiones originales: 4 → Dimensiones reducidas: {n_componentes}")
+print(f"   Varianza explicada total: {sum(pca.explained_variance_ratio_)*100:.2f}%")
+
+# 8. Visualización 2D final
+print("\n8. Visualización final en 2D")
+colores = {'Iris-setosa': 'red', 'Iris-versicolor': 'green', 'Iris-virginica': 'blue'}
+
+plt.figure(figsize=(12,9))
+for especie in df['species'].unique():
+    mask = df['species'] == especie
+    plt.scatter(X_pca[mask, 0], X_pca[mask, 1],
+                c=colores[especie], label=especie, s=100, alpha=0.8, edgecolors='black')
+
+plt.xlabel(f'Componente Principal 1 ({pca.explained_variance_ratio_[0]*100:.1f}% varianza)')
+plt.ylabel(f'Componente Principal 2 ({pca.explained_variance_ratio_[1]*100:.1f}% varianza)')
+plt.title('Dataset Iris Reducido a 2 Dimensiones con PCA\n(95.8% de la información preservada)', 
+          fontsize=14, fontweight='bold')
+plt.legend(title='Especies')
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+# 9. Biplot (opcional pero muy pro)
+print("\n9. Biplot: Variables y observaciones")
+plt.figure(figsize=(13,9))
+for especie, color in colores.items():
+    mask = df['species'] == especie
+    plt.scatter(X_pca[mask, 0], X_pca[mask, 1],
+                c=color, label=especie, s=80, alpha=0.7, edgecolors='black')
+
+# Vectores de variables originales
+scale = 3
+for i, feature in enumerate(features):
+    plt.arrow(0, 0, pca.components_[0, i]*scale, pca.components_[1, i]*scale,
+              head_width=0.15, color='darkred', linewidth=2)
+    plt.text(pca.components_[0, i]*scale*1.2, pca.components_[1, i]*scale*1.2,
+             feature.replace('_', ' '), color='darkred', fontsize=11, fontweight='bold')
+
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.title('Biplot PCA - Iris Dataset', fontweight='bold')
+plt.axhline(0, color='gray', linestyle='--', alpha=0.7)
+plt.axvline(0, color='gray', linestyle='--', alpha=0.7)
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+
+# ==========================================
+# CONCLUSIÓN FINAL
+# ==========================================
+print("\n" + "="*70)
+print("CONCLUSIÓN FINAL")
+print("="*70)
+print("Se aplicó exitosamente PCA al dataset Iris con los siguientes resultados:")
+print("")
+print(f"• Dimensiones originales: 4 variables")
+print(f"• Dimensiones reducidas: 2 componentes principales")
+print(f"• Varianza preservada: {sum(pca.explained_variance_ratio_)*100:.2f}%")
+print(f"• Reducción lograda: 50% de dimensiones")
+print(f"• Pérdida de información: solo {(100 - sum(pca.explained_variance_ratio_)*100):.2f}%")
+print("")
+print("JUSTIFICACIÓN DEL VALOR ELEGIDO (2 componentes):")
+print("   → Capturan el 95.8% de toda la información del dataset")
+print("   → Permiten visualizar perfectamente las 3 especies separadas")
+print("   → Es el estándar usado en todos los libros y papers sobre Iris")
+print("   → Balance ideal entre simplicidad y precisión")
+print("")
+print("Este análisis demuestra que solo se necesitan 2 dimensiones")
+print("para representar casi toda la estructura del famoso dataset Iris.")

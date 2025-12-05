@@ -1,0 +1,242 @@
+"""
+TAREA 1 - ANÁLISIS SUPERVISADO: REGRESIÓN
+Predicción del número de shares en artículos de Machine Learning
+Dataset: articulos_ml.csv
+"""
+
+# ==========================================
+# DATOS DEL ALUMNO
+# ==========================================
+"""
+Estudiante: Yanny Galilea Moreno Santiago
+Grupo: IDGS12
+Materia: Extracción de Conocimiento en Bases de Datos
+Profesor: Filiberto Ruiz Hernández
+Algoritmo seleccionado: Random Forest Regressor
+"""
+
+# ==========================================
+# JUSTIFICACIÓN DEL ALGORITMO ELEGIDO
+# ==========================================
+"""
+Decidí usar Random Forest Regressor por las siguientes razones:
+
+1. La variable objetivo (# Shares) tiene una distribución muy sesgada con muchos valores extremos (artículos virales).
+2. Existen relaciones no lineales entre las características del artículo (palabras, imágenes, comentarios, enlaces, etc.) y la cantidad de shares.
+3. Random Forest es muy robusto frente a outliers y no requiere transformar ni escalar las variables.
+4. Puede manejar automáticamente interacciones complejas entre variables.
+5. Proporciona la importancia de cada variable, lo que ayuda a interpretar qué influye más en la viralidad.
+6. En problemas reales de predicción de popularidad de contenido (como noticias o artículos), este algoritmo suele tener uno de los mejores desempeños.
+
+Por estas razones descarté modelos lineales y elegí Random Forest como la mejor opción para este caso.
+"""
+
+# ==========================================
+# DESCRIPCIÓN DEL DISEÑO DEL MODELO (PASO A PASO)
+# ==========================================
+"""
+El diseño del modelo se realizó en los siguientes pasos:
+
+1. Cargar el dataset articulos_ml.csv
+2. Explorar los datos (ver estructura, tipos, valores faltantes y estadísticas)
+3. Limpiar los datos: eliminar columnas no útiles (Title y url), convertir a numérico y rellenar valores faltantes
+4. Análisis exploratorio: matriz de correlación y distribución de la variable objetivo
+5. Separar variables predictoras (X) y variable objetivo (y)
+6. Dividir en conjunto de entrenamiento (80%) y prueba (20%)
+7. Entrenar un modelo base de Random Forest con parámetros por defecto
+8. Optimizar hiperparámetros usando GridSearchCV con validación cruzada de 5 pliegues
+9. Evaluar el modelo optimizado con métricas MAE, RMSE y R²
+10. Analizar la importancia de las variables
+11. Generar gráficas comparativas de valores reales vs predichos
+12. Guardar el modelo final para entrega
+
+A continuación se muestra todo el proceso paso a paso:
+"""
+
+# ==========================================
+# IMPLEMENTACIÓN DEL MODELO
+# ==========================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# Configuración visual
+plt.style.use('seaborn-v0_8-darkgrid')
+%matplotlib inline
+
+# 1. Cargar los datos
+print("1. Cargando el dataset articulos_ml.csv...")
+df = pd.read_csv(r"C:\Users\yanny\Downloads\articulos_ml.csv")
+print(f"   Filas: {df.shape[0]} | Columnas: {df.shape[1]}")
+display(df.head())
+
+# 2. Exploración inicial
+print("\n2. Exploración inicial de los datos")
+df.info()
+print("\nValores nulos:")
+print(df.isnull().sum())
+
+# 3. Limpieza de datos
+print("\n3. Limpiando y preparando los datos...")
+df_clean = df.drop(['Title', 'url'], axis=1)
+
+# Convertir columnas a numérico
+columnas = ['Word count', '# of Links', '# of comments', '# Images video', 'Elapsed days', '# Shares']
+for col in columnas:
+    df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+
+# Eliminar filas sin shares y rellenar valores faltantes con la mediana
+df_clean = df_clean.dropna(subset=['# Shares'])
+for col in ['Word count', '# of Links', '# of comments', '# Images video']:
+    df_clean[col] = df_clean[col].fillna(df_clean[col].median())
+
+print(f"   Datos limpios: {df_clean.shape[0]} filas listas")
+
+# 4. Análisis exploratorio
+print("\n4. Análisis exploratorio")
+plt.figure(figsize=(10,8))
+sns.heatmap(df_clean.corr(), annot=True, cmap='coolwarm', fmt='.2f', square=True)
+plt.title('Matriz de Correlación', fontweight='bold')
+plt.show()
+
+# Distribución de shares
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.hist(df_clean['# Shares'], bins=50, color='skyblue', edgecolor='black')
+plt.title('Distribución de # Shares')
+plt.xlabel('Shares')
+plt.ylabel('Frecuencia')
+
+plt.subplot(1,2,2)
+plt.boxplot(df_clean['# Shares'], patch_artist=True, boxprops=dict(facecolor='lightcoral'))
+plt.title('Boxplot de Shares (Outliers)')
+plt.ylabel('Shares')
+plt.tight_layout()
+plt.show()
+
+# 5. Preparar variables
+print("\n5. Preparando variables para el modelo")
+X = df_clean.drop('# Shares', axis=1)
+y = df_clean['# Shares']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+print(f"   Entrenamiento: {X_train.shape[0]} ejemplos")
+print(f"   Prueba: {X_test.shape[0]} ejemplos")
+
+# 6. Modelo base
+print("\n6. Entrenando modelo base (sin optimizar)")
+modelo_base = RandomForestRegressor(random_state=42, n_jobs=-1)
+modelo_base.fit(X_train, y_train)
+pred_base = modelo_base.predict(X_test)
+
+mae_b = mean_absolute_error(y_test, pred_base)
+rmse_b = np.sqrt(mean_squared_error(y_test, pred_base))
+r2_b = r2_score(y_test, pred_base)
+
+print(f"   R² modelo base: {r2_b:.4f}")
+
+# 7. Optimización con GridSearchCV
+print("\n7. Optimizando hiperparámetros...")
+parametros = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [10, 20, 30, None],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['sqrt', 'log2']
+}
+
+grid = GridSearchCV(RandomForestRegressor(random_state=42, n_jobs=-1),
+                    parametros, cv=5, scoring='r2', n_jobs=-1)
+grid.fit(X_train, y_train)
+
+print("   Búsqueda completada")
+print(f"   Mejores parámetros: {grid.best_params_}")
+print(f"   Mejor R² en validación: {grid.best_score_:.4f}")
+
+# 8. Modelo final
+print("\n8. Evaluando modelo optimizado")
+modelo_final = grid.best_estimator_
+pred_final = modelo_final.predict(X_test)
+
+mae_f = mean_absolute_error(y_test, pred_final)
+rmse_f = np.sqrt(mean_squared_error(y_test, pred_final))
+r2_f = r2_score(y_test, pred_final)
+
+print(f"   R² modelo optimizado: {r2_f:.4f} (mejora de {((r2_f - r2_b)/r2_b*100):.2f}%)")
+
+# 9. Importancia de variables
+print("\n9. Importancia de las variables")
+importancia = pd.DataFrame({
+    'Variable': X.columns,
+    'Importancia': modelo_final.feature_importances_
+}).sort_values('Importancia', ascending=False)
+
+display(importancia)
+
+plt.figure(figsize=(10,6))
+plt.barh(importancia['Variable'], importancia['Importancia'], color='teal')
+plt.title('Importancia de Variables', fontweight='bold')
+plt.xlabel('Importancia')
+plt.gca().invert_yaxis()
+plt.show()
+
+# 10. Gráficas solicitadas
+print("\n10. Gráficas: Valores reales vs predichos")
+
+plt.figure(figsize=(14,6))
+plt.subplot(1,2,1)
+plt.scatter(y_test, pred_base, alpha=0.6, color='salmon', edgecolor='k', linewidth=0.5)
+plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--', lw=2)
+plt.title(f'Modelo Base\nR² = {r2_b:.4f}', fontweight='bold')
+plt.xlabel('Shares Reales')
+plt.ylabel('Shares Predichos')
+
+plt.subplot(1,2,2)
+plt.scatter(y_test, pred_final, alpha=0.6, color='lightgreen', edgecolor='k', linewidth=0.5)
+plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--', lw=2)
+plt.title(f'Modelo Optimizado\nR² = {r2_f:.4f}', fontweight='bold')
+plt.xlabel('Shares Reales')
+plt.ylabel('Shares Predichos')
+
+plt.supタイトル('Comparación: Valores Reales vs Predichos', fontsize=16, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# Gráfica adicional de dispersión
+plt.figure(figsize=(10,7))
+plt.scatter(y_test, pred_final, alpha=0.7, color='purple')
+plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--', lw=2)
+plt.title('Dispersión del Comportamiento de los Datos (Modelo Final)', fontweight='bold')
+plt.xlabel('Shares Reales')
+plt.ylabel('Shares Predichos')
+plt.grid(True, alpha=0.3)
+plt.show()
+
+
+# ==========================================
+# CONCLUSIÓN FINAL
+# ==========================================
+print("\n" + "="*70)
+print("CONCLUSIÓN FINAL")
+print("="*70)
+print("Se desarrolló exitosamente un modelo de Random Forest Regressor para predecir")
+print("el número de veces que será compartido un artículo de Machine Learning.")
+print("")
+print(f"Resultados obtenidos:")
+print(f"• R² final: {r2_f:.4f} → el modelo explica el {r2_f*100:.1f}% de la variabilidad")
+print(f"• Mejora respecto al modelo base: {((r2_f - r2_b)/r2_b*100):.2f}%")
+print("")
+print("Las tres variables más importantes para predecir los shares fueron:")
+for i, row in importancia.head(3).iterrows():
+    print(f"   • {row['Variable']}: {row['Importancia']:.4f}")
+print("")
+print("El modelo entrenado y todo el código están disponibles en el repositorio de GitHub.")
+print("")
